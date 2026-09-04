@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07111f;
+  --foreground: #e5eef8;
+  --panel: #0b1728;
+  --line: rgba(148, 163, 184, 0.14);
+  --muted: #8da0b8;
+  --cyan: #22d3ee;
+  --violet: #8b5cf6;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+* { box-sizing: border-box; }
+::selection { background: rgba(34,211,238,.25); color: white; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #07111f; }
+::-webkit-scrollbar-thumb { background: #26374c; border-radius: 999px; }
+
+.dashboard-grid {
+  background-image:
+    linear-gradient(rgba(148,163,184,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+.panel {
+  background: linear-gradient(145deg, rgba(14,29,48,.96), rgba(8,19,33,.96));
+  border: 1px solid var(--line);
+}
+.panel-hover { transition: transform .2s ease, border-color .2s ease, background .2s ease; }
+.panel-hover:hover { transform: translateY(-2px); border-color: rgba(34,211,238,.25); }
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 0%, rgba(34,211,238,.025) 50%, transparent 100%);
+  background-size: 100% 8px;
+  mix-blend-mode: screen;
+}
