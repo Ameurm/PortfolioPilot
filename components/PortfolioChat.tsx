@@ -16,7 +16,7 @@ type RagResponse = {
   sources: Source[];
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 const suggestions = ["How did you implement RAG?", "What is your AI architecture?", "How did you use .NET and microservices?", "How did you solve production AI problems?"];
 
 export default function PortfolioChat() {
@@ -38,7 +38,7 @@ export default function PortfolioChat() {
       setRagData(data);
       setMessages(m => [...m, {role:"assistant",content:data.answer,sources:data.sources}]);
     } catch {
-      setMessages(m => [...m, {role:"assistant",content:"AI backend unavailable. Start the FastAPI service on port 8000 and try again."}]);
+      setMessages(m => [...m, {role:"assistant",content:"AI backend unavailable. Check that the FastAPI service is running and try again.."}]);
     } finally { setLoading(false); }
   }
 
@@ -49,7 +49,7 @@ export default function PortfolioChat() {
       <aside className="border-b border-slate-800 bg-[#081321] p-4 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-400/10 font-mono text-cyan-300">✦</span><div><div className="text-xs font-bold text-white">ARCHITECT COPILOT</div><div className="font-mono text-[8px] text-slate-600">SESSION / GROUNDED</div></div></div>
         <div className="mt-6 space-y-2">
-          <Mini label="MODEL" value="Llama 3.2 / Ollama" />
+          <Mini label="MODEL" value="Google Gemini 3.6 Flash" />
           <Mini label="VECTOR STORE" value="FAISS" />
           <Mini label="EMBEDDINGS" value="all-MiniLM-L6-v2" />
           <Mini label="API" value="FastAPI" />
@@ -69,4 +69,4 @@ export default function PortfolioChat() {
   </div>;
 }
 function Mini({label,value}:{label:string;value:string}){return <div className="rounded-md border border-slate-800 bg-slate-950/20 p-2.5"><div className="font-mono text-[7px] tracking-widest text-slate-600">{label}</div><div className="mt-1 truncate text-[9px] font-semibold text-slate-400">{value}</div></div>}
-function Trace({data}:{data:RagResponse}){const steps=[["QUERY EMBEDDING",data.embedding_model],["SEMANTIC RETRIEVAL",`${data.retrieval.retrieved} candidates`],["AUTHORIZATION",`${data.authorization.authorized} authorized / ${data.authorization.filtered} filtered`],["RERANKING",data.reranking.type],["FINAL CONTEXT",`${data.context.selected} chunks`],["LLM",`${data.model} / Ollama`]];return <div className="border-t border-cyan-400/10 bg-[#07111f] p-4 sm:p-5"><div className="flex items-center justify-between"><div><div className="font-mono text-[9px] font-bold tracking-[.18em] text-cyan-300">RAG EXECUTION</div><div className="mt-1 text-[10px] text-slate-600">Latest request telemetry</div></div><span className="rounded-full border border-emerald-400/15 bg-emerald-400/[.05] px-2 py-1 font-mono text-[7px] font-bold text-emerald-300">GROUNDED</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">{steps.map(([title,value],i)=><div key={title} className="relative rounded-lg border border-slate-800 bg-[#0b1728] p-3"><div className="font-mono text-[7px] text-cyan-400">0{i+1}</div><div className="mt-1 text-[9px] font-bold text-slate-300">{title}</div><div className="mt-1 truncate font-mono text-[8px] text-slate-600" title={value}>{value}</div></div>)}</div></div>}
+function Trace({data}:{data:RagResponse}){const steps=[["QUERY EMBEDDING",data.embedding_model],["SEMANTIC RETRIEVAL",`${data.retrieval.retrieved} candidates`],["AUTHORIZATION",`${data.authorization.authorized} authorized / ${data.authorization.filtered} filtered`],["RERANKING",data.reranking.type],["FINAL CONTEXT",`${data.context.selected} chunks`],["LLM", data.model]];return <div className="border-t border-cyan-400/10 bg-[#07111f] p-4 sm:p-5"><div className="flex items-center justify-between"><div><div className="font-mono text-[9px] font-bold tracking-[.18em] text-cyan-300">RAG EXECUTION</div><div className="mt-1 text-[10px] text-slate-600">Latest request telemetry</div></div><span className="rounded-full border border-emerald-400/15 bg-emerald-400/[.05] px-2 py-1 font-mono text-[7px] font-bold text-emerald-300">GROUNDED</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">{steps.map(([title,value],i)=><div key={title} className="relative rounded-lg border border-slate-800 bg-[#0b1728] p-3"><div className="font-mono text-[7px] text-cyan-400">0{i+1}</div><div className="mt-1 text-[9px] font-bold text-slate-300">{title}</div><div className="mt-1 truncate font-mono text-[8px] text-slate-600" title={value}>{value}</div></div>)}</div></div>}

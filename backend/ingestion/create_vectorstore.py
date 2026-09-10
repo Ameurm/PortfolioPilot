@@ -38,6 +38,12 @@ text_splitter = RecursiveCharacterTextSplitter(
 
 chunks = text_splitter.create_documents([text])
 
+for i, chunk in enumerate(chunks):
+    chunk.metadata["source"] = DOCUMENT_PATH.name
+    chunk.metadata["document_type"] = "ai_architecture_knowledge"
+    chunk.metadata["chunk_id"] = i
+    chunk.metadata["access_level"] = "public"
+    chunk.metadata["category"] = "architecture"
 print(f"Created {len(chunks)} chunks")
 
 
@@ -80,3 +86,7 @@ print("VECTOR STORE CREATED SUCCESSFULLY")
 print("======================================")
 print(f"Location: {VECTORSTORE_PATH}")
 print(f"Chunks indexed: {len(chunks)}")
+
+
+
+

@@ -144,7 +144,7 @@ depending only on exact keyword matches.
 
 ## Current Portfolio Implementation
 
-The AI Architect Portfolio RAG assistant currently uses FAISS as its local
+PortfolioPilot, the AI Architect Portfolio RAG assistant, currently uses FAISS as its local
 vector store.
 
 The current implementation uses:
@@ -153,8 +153,8 @@ The current implementation uses:
 - LangChain
 - HuggingFace `all-MiniLM-L6-v2` embeddings
 - FAISS vector store
-- Ollama
-- Llama 3.2
+- Google Gemini API
+- Google Gemini 3.6 Flash
 - FastAPI
 
 The current RAG flow is:
@@ -180,7 +180,7 @@ Top Retrieved Chunks
 Context Construction
     |
     v
-Llama 3.2
+Google Gemini 3.6 Flash
     |
     v
 Grounded Answer
@@ -292,7 +292,7 @@ The LLM is instructed to answer using the supplied source material.
 
 # Generation
 
-The current portfolio implementation uses Llama 3.2 through Ollama.
+The current portfolio implementation uses Google Gemini 3.6 Flash.
 
 The LLM receives:
 
@@ -406,7 +406,7 @@ RAG Service
         |
         +---- FAISS Vector Store
         |
-        +---- Ollama / Llama 3.2
+        +---- Google Gemini 3.6 Flash
         |
         +---- Reranking
 
@@ -487,7 +487,7 @@ The RAG service:
 4. Applies metadata authorization.
 5. Reranks the candidates.
 6. Selects the final context.
-7. Sends the grounded context to Llama 3.2 through Ollama.
+7. Sends the grounded context to Google Gemini 3.6 Flash.
 8. Returns the generated answer to the frontend.
 
 The portfolio assistant is designed to demonstrate the architecture and
@@ -508,9 +508,10 @@ The current portfolio RAG implementation uses:
 - HuggingFace Embeddings
 - sentence-transformers/all-MiniLM-L6-v2
 - FAISS
-- Ollama
-- Llama 3.2
+- Google Gemini API
+- Google Gemini 3.6 Flash
 
 The architecture is intentionally modular so components can later be replaced
 with production services such as managed vector databases, cloud-hosted LLMs,
 neural rerankers, and LangGraph orchestration.
+

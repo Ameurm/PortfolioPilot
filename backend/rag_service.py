@@ -3,7 +3,7 @@ from typing import Any
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 # =========================================================
@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-OLLAMA_MODEL = "llama3.2"
+LLM_MODEL = "gemini-3.6-flash"
 
 INITIAL_RETRIEVAL_K = 10
 FINAL_CONTEXT_K = 5
@@ -63,9 +63,8 @@ retriever = vectorstore.as_retriever(
 # Ollama / Llama
 # =========================================================
 
-llm = ChatOllama(
-    model=OLLAMA_MODEL,
-    temperature=0,
+llm = ChatGoogleGenerativeAI(
+    model=LLM_MODEL,
 )
 
 
@@ -243,7 +242,7 @@ def answer_question(question: str) -> dict[str, Any]:
             "context": {
                 "selected": 0,
             },
-            "model": OLLAMA_MODEL,
+            "model": LLM_MODEL,
             "embedding_model": EMBEDDING_MODEL,
             "vector_store": "FAISS",
             "sources": [],
@@ -290,7 +289,7 @@ def answer_question(question: str) -> dict[str, Any]:
     print("=" * 70)
 
     print(
-        f"Documents sent to Llama: "
+        f"Documents sent to Gemini: "
         f"{final_context_count}"
     )
 
@@ -349,8 +348,7 @@ Content:
     prompt = f"""
 You are answering a question using a retrieved knowledge base.
 
-You MUST answer the user's question using ONLY the information
-contained in the SOURCE MATERIAL below.
+Answer the user question using the SOURCE MATERIAL as the authoritative knowledge base.
 
 You are NOT a general conversational assistant.
 
@@ -377,8 +375,7 @@ ANSWERING RULES
    metrics, or personal experience.
 5. If the SOURCE MATERIAL contains the answer, explain it clearly
    and concisely.
-6. If the SOURCE MATERIAL does not contain enough information,
-   respond exactly with:
+6. If the SOURCE MATERIAL does not contain the requested information, respond exactly with:
 
 "The knowledge base does not contain enough information to answer
 that accurately."
@@ -402,12 +399,15 @@ ANSWER:
 
     print()
     print("=" * 70)
-    print("CALLING LLAMA 3.2")
+    print("CALLING GEMINI")
     print("=" * 70)
 
     response = llm.invoke(prompt)
 
-    answer = response.content
+    if isinstance(response.content, list):
+        answer = " ".join(item.get("text", "") for item in response.content if isinstance(item, dict))
+    else:
+        answer = str(response.content)
 
     # =====================================================
     # 9. Build Source Metadata
@@ -471,7 +471,7 @@ ANSWER:
             "max_context": FINAL_CONTEXT_K,
         },
 
-        "model": OLLAMA_MODEL,
+        "model": LLM_MODEL,
 
         "embedding_model": EMBEDDING_MODEL,
 
@@ -479,3 +479,9 @@ ANSWER:
 
         "sources": sources,
     }
+
+
+
+
+
+
