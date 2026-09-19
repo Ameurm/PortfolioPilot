@@ -8,3 +8,6 @@ faiss-cpu
 pypdf
 python-multipart
 langchain-huggingface
+langchain-google-genai
+
+python-docx
