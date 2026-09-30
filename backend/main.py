@@ -1,12 +1,18 @@
 from pathlib import Path
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.rag_service import answer_question
-from backend.resume_service import process_resume
+load_dotenv()
+
+from rag_service import (
+    answer_question,
+    reload_resume_retriever,
+)
+from resume_service import process_resume
 
 
 app = FastAPI(
@@ -137,9 +143,7 @@ async def upload_resume(
 
         raise HTTPException(
             status_code=413,
-            detail=(
-                "Resume must be smaller than 10 MB."
-            ),
+            detail="Resume must be smaller than 10 MB.",
         )
 
     # --------------------------------------------------------
@@ -179,6 +183,14 @@ async def upload_resume(
             resume_name=original_name,
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # Reload the in-memory resume retriever so the newly
+        # uploaded resume becomes available immediately.
+        # ----------------------------------------------------
+
+        reload_resume_retriever()
+
     except Exception as exc:
 
         if stored_path.exists():
@@ -216,3 +228,4 @@ async def health():
         "status": "healthy",
         "service": "ai-architect-portfolio-api",
     }
+

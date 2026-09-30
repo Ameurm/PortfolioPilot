@@ -1,10 +1,14 @@
 from pathlib import Path
+import os
 import re
 from typing import Any
 
+from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+
+load_dotenv()
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -13,15 +17,11 @@ VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 RESUME_VECTORSTORE_PATH = BASE_DIR / "resume_data" / "vectorstore"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-LLM_MODEL = "gemini-3.6-flash"
+LLM_MODEL = "openai/gpt-oss-120b"
 
 INITIAL_RETRIEVAL_K = 10
 FINAL_CONTEXT_K = 5
 
-
-# ============================================================
-# Embeddings
-# ============================================================
 
 print("Loading embedding model...")
 
@@ -31,10 +31,6 @@ embeddings = HuggingFaceEmbeddings(
 
 print("Embedding model loaded.")
 
-
-# ============================================================
-# Portfolio Vector Store
-# ============================================================
 
 print("Loading portfolio FAISS vector store...")
 
@@ -51,51 +47,85 @@ portfolio_retriever = vectorstore.as_retriever(
 )
 
 
-# ============================================================
-# Resume Vector Store
-# ============================================================
+# ---------------------------------------------------------
+# Resume vector store
+# ---------------------------------------------------------
 
 resume_vectorstore = None
 resume_retriever = None
 
-resume_index_file = RESUME_VECTORSTORE_PATH / "index.faiss"
 
-if resume_index_file.exists():
+def reload_resume_retriever() -> bool:
+    global resume_vectorstore
+    global resume_retriever
 
-    print("Loading resume FAISS vector store...")
+    resume_index_file = RESUME_VECTORSTORE_PATH / "index.faiss"
 
-    resume_vectorstore = FAISS.load_local(
-        str(RESUME_VECTORSTORE_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    if not resume_index_file.exists():
+        resume_vectorstore = None
+        resume_retriever = None
 
-    resume_retriever = resume_vectorstore.as_retriever(
-        search_kwargs={"k": INITIAL_RETRIEVAL_K}
-    )
+        print(
+            "Resume FAISS vector store not found. "
+            "Resume retrieval is disabled."
+        )
 
-    print("Resume FAISS vector store loaded.")
+        return False
 
-else:
+    try:
+        print("Loading resume FAISS vector store...")
 
-    print(
-        "Resume FAISS vector store not found. "
-        "Resume retrieval is disabled."
-    )
+        resume_vectorstore = FAISS.load_local(
+            str(RESUME_VECTORSTORE_PATH),
+            embeddings,
+            allow_dangerous_deserialization=True,
+        )
+
+        resume_retriever = resume_vectorstore.as_retriever(
+            search_kwargs={"k": INITIAL_RETRIEVAL_K}
+        )
+
+        print("Resume FAISS vector store loaded.")
+
+        return True
+
+    except Exception as exc:
+
+        resume_vectorstore = None
+        resume_retriever = None
+
+        print(
+            f"Failed to load resume FAISS vector store: {exc}"
+        )
+
+        return False
 
 
-# ============================================================
-# LLM
-# ============================================================
+reload_resume_retriever()
 
-llm = ChatGoogleGenerativeAI(
-    model=LLM_MODEL
+
+# ---------------------------------------------------------
+# Gemini
+# ---------------------------------------------------------
+
+# ---------------------------------------------------------
+# Gemini
+# ---------------------------------------------------------
+
+# ---------------------------------------------------------
+# Groq
+# ---------------------------------------------------------
+
+llm = ChatGroq(
+    model=LLM_MODEL,
+    groq_api_key=os.getenv("GROQ_API_KEY"),
+    temperature=0,
 )
 
 
-# ============================================================
-# Authorization
-# ============================================================
+# ---------------------------------------------------------
+# Security / authorization
+# ---------------------------------------------------------
 
 def is_authorized(document) -> bool:
 
@@ -107,9 +137,9 @@ def is_authorized(document) -> bool:
     return access_level == "public"
 
 
-# ============================================================
-# Source Classification
-# ============================================================
+# ---------------------------------------------------------
+# Source classification
+# ---------------------------------------------------------
 
 def classify_source(document) -> str:
 
@@ -123,9 +153,9 @@ def classify_source(document) -> str:
     return "portfolio"
 
 
-# ============================================================
-# Text Normalization
-# ============================================================
+# ---------------------------------------------------------
+# Text normalization
+# ---------------------------------------------------------
 
 def normalize_text(text: str) -> str:
 
@@ -155,11 +185,13 @@ def tokenize(text: str) -> list[str]:
     ]
 
 
-# ============================================================
-# Personal Experience Detection
-# ============================================================
+# ---------------------------------------------------------
+# Personal experience detection
+# ---------------------------------------------------------
 
-def is_personal_experience_question(question: str) -> bool:
+def is_personal_experience_question(
+    question: str,
+) -> bool:
 
     normalized = normalize_text(question)
 
@@ -172,7 +204,6 @@ def is_personal_experience_question(question: str) -> bool:
         "designed",
         "implemented",
         "architected",
-        "developed",
         "used",
         "skills",
         "background",
@@ -191,9 +222,9 @@ def is_personal_experience_question(question: str) -> bool:
     )
 
 
-# ============================================================
-# Hybrid Reranking
-# ============================================================
+# ---------------------------------------------------------
+# Hybrid reranking
+# ---------------------------------------------------------
 
 def rerank_documents(
     question: str,
@@ -203,39 +234,41 @@ def rerank_documents(
     if not documents:
         return []
 
-    normalized_question = normalize_text(question)
+    normalized_question = normalize_text(
+        question
+    )
 
     question_tokens = set(
         tokenize(question)
     )
 
     personal_question = (
-        is_personal_experience_question(question)
+        is_personal_experience_question(
+            question
+        )
     )
 
     scored_documents = []
 
-    for semantic_rank, document in enumerate(documents):
+    for semantic_rank, document in enumerate(
+        documents
+    ):
 
         content = normalize_text(
             document.page_content
         )
 
-        source_type = classify_source(document)
+        source_type = classify_source(
+            document
+        )
 
         score = 0.0
 
-        # ----------------------------------------------------
-        # 1. Exact phrase match
-        # ----------------------------------------------------
-
+        # Exact phrase match
         if normalized_question in content:
             score += 20.0
 
-        # ----------------------------------------------------
-        # 2. Exact token matches
-        # ----------------------------------------------------
-
+        # Token matching
         content_tokens = set(
             tokenize(document.page_content)
         )
@@ -248,16 +281,7 @@ def rerank_documents(
 
         score += len(exact_matches) * 4.0
 
-        # ----------------------------------------------------
-        # 3. Strong technology / phrase matching
-        #
-        # Multi-word or technology terms receive extra weight.
-        # This helps queries such as:
-        #
-        # "LangGraph and MCP"
-        #
-        # ----------------------------------------------------
-
+        # Technology matching
         technology_terms = [
             "langgraph",
             "langchain",
@@ -292,85 +316,65 @@ def rerank_documents(
             "terraform",
         ]
 
-        matched_technology_terms = 0
-
         for term in technology_terms:
 
-            normalized_term = normalize_text(term)
+            normalized_term = normalize_text(
+                term
+            )
 
             if not normalized_term:
                 continue
 
             if normalized_term in content:
 
-                # Exact technology match gets substantial weight.
                 if " " in normalized_term:
                     score += 8.0
                 else:
                     score += 7.0
 
-                matched_technology_terms += 1
-
-        # ----------------------------------------------------
-        # 4. Personal experience boost
-        #
-        # When the visitor asks about Javier's experience,
-        # resume evidence should outrank generic architecture
-        # knowledge when both are relevant.
-        # ----------------------------------------------------
-
-        if personal_question and source_type == "resume":
-
+        # Resume priority for personal questions
+        if (
+            personal_question
+            and source_type == "resume"
+        ):
             score += 12.0
 
-        # ----------------------------------------------------
-        # 5. Resume chunk with multiple requested terms
-        #
-        # A resume chunk mentioning both LangGraph and MCP
-        # should strongly outrank a chunk mentioning only one.
-        # ----------------------------------------------------
-
+        # Requested technology matching
         if source_type == "resume":
 
-            requested_technology_matches = 0
+            requested_technology_terms = {
+                "langgraph",
+                "langchain",
+                "mcp",
+                "rag",
+                "fastapi",
+                "python",
+                "react",
+                "angular",
+                "azure",
+                "aws",
+                "gcp",
+                "kafka",
+                "faiss",
+                "pinecone",
+                "openai",
+                "gemini",
+                "claude",
+                "llm",
+            }
+
+            requested_matches = 0
 
             for token in question_tokens:
 
-                if token in {
-                    "langgraph",
-                    "langchain",
-                    "mcp",
-                    "rag",
-                    "fastapi",
-                    "python",
-                    "react",
-                    "angular",
-                    "azure",
-                    "aws",
-                    "gcp",
-                    "kafka",
-                    "faiss",
-                    "pinecone",
-                    "openai",
-                    "gemini",
-                    "claude",
-                    "llm",
-                }:
+                if token in requested_technology_terms:
 
                     if token in content_tokens:
-                        requested_technology_matches += 1
+                        requested_matches += 1
 
-            score += (
-                requested_technology_matches * 6.0
-            )
+            score += requested_matches * 6.0
 
-        # ----------------------------------------------------
-        # 6. Semantic retrieval rank bonus
-        #
-        # Preserve some of the original FAISS semantic ranking
-        # so that lexical matching doesn't completely dominate.
-        # ----------------------------------------------------
-
+        # Small semantic-rank bonus
         semantic_bonus = max(
             0.0,
             5.0 - (semantic_rank * 0.35),
@@ -386,10 +390,6 @@ def rerank_documents(
             )
         )
 
-    # Highest score first.
-    #
-    # Semantic rank is used as the tie breaker so we don't lose
-    # the original FAISS relevance signal.
     scored_documents.sort(
         key=lambda item: (
             item[0],
@@ -405,9 +405,9 @@ def rerank_documents(
     ]
 
 
-# ============================================================
-# Context Selection
-# ============================================================
+# ---------------------------------------------------------
+# Context selection
+# ---------------------------------------------------------
 
 def select_context_documents(
     question: str,
@@ -419,32 +419,28 @@ def select_context_documents(
         return []
 
     personal_question = (
-        is_personal_experience_question(question)
+        is_personal_experience_question(
+            question
+        )
     )
 
-    # For personal-experience questions, prefer resume evidence.
     if personal_question:
 
         resume_documents = [
             document
             for document in documents
-            if classify_source(document) == "resume"
-        ]
-
-        portfolio_documents = [
-            document
-            for document in documents
-            if classify_source(document) == "portfolio"
+            if classify_source(document)
+            == "resume"
         ]
 
         selected = []
 
-        # Prefer up to 3 highly relevant resume chunks.
+        # Prioritize resume evidence
         for document in resume_documents[:3]:
+
             selected.append(document)
 
-        # Fill remaining context slots from the globally
-        # reranked list while avoiding duplicates.
+        # Fill remaining context
         for document in documents:
 
             if len(selected) >= max_documents:
@@ -458,11 +454,13 @@ def select_context_documents(
     return documents[:max_documents]
 
 
-# ============================================================
-# Answer Question
-# ============================================================
+# ---------------------------------------------------------
+# Main RAG function
+# ---------------------------------------------------------
 
-def answer_question(question: str) -> dict[str, Any]:
+def answer_question(
+    question: str,
+) -> dict[str, Any]:
 
     question = question.strip()
 
@@ -470,8 +468,8 @@ def answer_question(question: str) -> dict[str, Any]:
 
         return {
             "answer": (
-                "Please provide a question about Javier's "
-                "experience, skills, or projects."
+                "Please provide a question about "
+                "Javier's experience, skills, or projects."
             ),
             "question": question,
             "retrieval": {
@@ -499,17 +497,17 @@ def answer_question(question: str) -> dict[str, Any]:
             "sources": [],
         }
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Portfolio retrieval
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     portfolio_documents = (
         portfolio_retriever.invoke(question)
     )
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Resume retrieval
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     resume_documents = []
 
@@ -519,18 +517,18 @@ def answer_question(question: str) -> dict[str, Any]:
             resume_retriever.invoke(question)
         )
 
-    # --------------------------------------------------------
-    # Combine retrieval results
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Combine sources
+    # -----------------------------------------------------
 
     all_documents = (
         portfolio_documents
         + resume_documents
     )
 
-    # --------------------------------------------------------
-    # Authorization
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Authorization filter
+    # -----------------------------------------------------
 
     authorized_documents = [
         document
@@ -543,28 +541,30 @@ def answer_question(question: str) -> dict[str, Any]:
         - len(authorized_documents)
     )
 
-    # --------------------------------------------------------
-    # Hybrid reranking
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Reranking
+    # -----------------------------------------------------
 
     reranked_documents = rerank_documents(
         question,
         authorized_documents,
     )
 
-    # --------------------------------------------------------
-    # Final context selection
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Context selection
+    # -----------------------------------------------------
 
-    selected_documents = select_context_documents(
-        question,
-        reranked_documents,
-        FINAL_CONTEXT_K,
+    selected_documents = (
+        select_context_documents(
+            question,
+            reranked_documents,
+            FINAL_CONTEXT_K,
+        )
     )
 
-    # --------------------------------------------------------
-    # Build grounded context
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Build context
+    # -----------------------------------------------------
 
     context_blocks = []
 
@@ -573,7 +573,9 @@ def answer_question(question: str) -> dict[str, Any]:
         start=1,
     ):
 
-        source_type = classify_source(document)
+        source_type = classify_source(
+            document
+        )
 
         source = document.metadata.get(
             "source",
@@ -608,15 +610,14 @@ Content:
         context_blocks
     )
 
-    # --------------------------------------------------------
-    # Grounded prompt
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # LLM prompt
+    # -----------------------------------------------------
 
     prompt = f"""
 You are the AI assistant for Javier's professional portfolio.
 
-Answer the user's question using ONLY the provided source
-material.
+Answer the user's question using ONLY the provided source material.
 
 USER QUESTION:
 {question}
@@ -633,16 +634,16 @@ RULES:
 3. Do not use outside knowledge.
 
 4. Never invent technologies, projects, companies,
-   responsibilities, certifications, education, metrics,
-   achievements, or years of experience.
+responsibilities, certifications, education, metrics,
+achievements, or years of experience.
 
-5. If the source material supports the answer, explain it
-   clearly and concisely.
+5. If the source material supports the answer,
+explain it clearly and concisely.
 
-6. If the source material does not contain enough evidence,
-   respond exactly with:
+6. If the source material does not contain enough
+evidence, respond exactly with:
 
-   The knowledge base does not contain enough information to answer that accurately.
+The knowledge base does not contain enough information to answer that accurately.
 
 7. Do not ask the user to provide more information.
 
@@ -652,41 +653,43 @@ RULES:
 
 10. Do not speculate.
 
-11. Clearly distinguish between technologies actually documented
-    in Javier's experience and technologies mentioned only as
-    possible alternatives or architectural concepts.
+11. Clearly distinguish between technologies actually
+documented in Javier's experience and technologies
+mentioned only as possible alternatives or architectural
+concepts.
 
-12. When the source type is "resume", treat it as documented
-    professional experience, skills, projects, and career history.
+12. When the source type is "resume", treat it as
+documented professional experience, skills, projects,
+and career history.
 
-13. When the source type is "portfolio", treat it as project
-    architecture and technical knowledge documented in the portfolio.
+13. When the source type is "portfolio", treat it as
+project architecture and technical knowledge documented
+in the portfolio.
 
-14. Do not combine unrelated claims merely because they appear
-    in different documents.
+14. Do not combine unrelated claims merely because they
+appear in different documents.
 
 15. Keep the answer concise but useful.
 
-16. When the question asks about Javier's personal experience,
-    prioritize evidence from the resume.
+16. When the question asks about Javier's personal
+experience, prioritize evidence from the resume.
 
-17. If multiple resume sections support the same technology,
-    synthesize them into one accurate answer rather than
-    repeating the same statement.
+17. If multiple resume sections support the same
+technology, synthesize them into one accurate answer.
 
-18. Do not infer that knowing a technology means Javier used it
-    professionally unless the source explicitly supports that.
+18. Do not infer that knowing a technology means Javier
+used it professionally unless the source explicitly
+supports that.
 """
 
-    # --------------------------------------------------------
-    # LLM invocation
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Gemini
+    # -----------------------------------------------------
 
     response = llm.invoke(prompt)
 
     answer = response.content
 
-    # Gemini/LangChain can occasionally return structured content.
     if not isinstance(answer, str):
 
         if isinstance(answer, list):
@@ -700,9 +703,9 @@ RULES:
 
             answer = str(answer)
 
-    # --------------------------------------------------------
-    # Source metadata
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # Sources
+    # -----------------------------------------------------
 
     sources = []
 
@@ -713,7 +716,9 @@ RULES:
             "unknown",
         )
 
-        source_type = classify_source(document)
+        source_type = classify_source(
+            document
+        )
 
         sources.append(
             {
@@ -738,9 +743,14 @@ RULES:
             }
         )
 
+    # -----------------------------------------------------
+    # Response
+    # -----------------------------------------------------
+
     return {
         "answer": answer,
         "question": question,
+
         "retrieval": {
             "initial_k": INITIAL_RETRIEVAL_K,
             "portfolio_retrieved": len(
@@ -753,12 +763,14 @@ RULES:
                 all_documents
             ),
         },
+
         "authorization": {
             "authorized": len(
                 authorized_documents
             ),
             "filtered": filtered_count,
         },
+
         "reranking": {
             "enabled": True,
             "type": "hybrid_exact_semantic",
@@ -767,14 +779,17 @@ RULES:
             ),
             "production_upgrade": "cross_encoder",
         },
+
         "context": {
             "selected": len(
                 selected_documents
             ),
             "max_context": FINAL_CONTEXT_K,
         },
+
         "model": LLM_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "vector_store": "FAISS",
+
         "sources": sources,
     }

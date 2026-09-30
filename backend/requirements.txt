@@ -9,5 +9,5 @@ pypdf
 python-multipart
 langchain-huggingface
 langchain-google-genai
-
+langchain-groq
 python-docx

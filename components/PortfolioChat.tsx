@@ -1,15 +1,40 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 
-type Source = { source: string; chunk_id: number; category: string; access_level: string };
-type Message = { role: "user" | "assistant"; content: string; sources?: Source[] };
+type Source = {
+  source: string;
+  chunk_id: number;
+  category: string;
+  access_level: string;
+};
+
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+};
+
 type RagResponse = {
   answer: string;
-  retrieval: { initial_k: number; retrieved: number };
-  authorization: { authorized: number; filtered: number };
-  reranking: { enabled: boolean; type: string; documents_reranked: number; production_upgrade: string };
-  context: { selected: number; max_context: number };
+  retrieval: {
+    initial_k: number;
+    retrieved: number;
+  };
+  authorization: {
+    authorized: number;
+    filtered: number;
+  };
+  reranking: {
+    enabled: boolean;
+    type: string;
+    documents_reranked: number;
+    production_upgrade: string;
+  };
+  context: {
+    selected: number;
+    max_context: number;
+  };
   model: string;
   embedding_model: string;
   vector_store: string;
@@ -36,14 +61,29 @@ export default function PortfolioChat() {
   const [loading, setLoading] = useState(false);
   const [ragData, setRagData] = useState<RagResponse | null>(null);
 
-  async function sendMessage(event?: FormEvent, selected?: string) {
+  const [resumeName, setResumeName] = useState<string | null>(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
+
+  async function sendMessage(
+    event?: FormEvent,
+    selected?: string
+  ): Promise<void> {
     event?.preventDefault();
 
     const message = (selected ?? input).trim();
 
-    if (!message || loading) return;
+    if (!message || loading) {
+      return;
+    }
 
-    setMessages((m) => [...m, { role: "user", content: message }]);
+    setMessages((current) => [
+      ...current,
+      {
+        role: "user",
+        content: message
+      }
+    ]);
+
     setInput("");
     setLoading(true);
     setRagData(null);
@@ -54,7 +94,9 @@ export default function PortfolioChat() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({
+          message
+        })
       });
 
       if (!response.ok) {
@@ -65,8 +107,8 @@ export default function PortfolioChat() {
 
       setRagData(data);
 
-      setMessages((m) => [
-        ...m,
+      setMessages((current) => [
+        ...current,
         {
           role: "assistant",
           content: data.answer,
@@ -76,8 +118,8 @@ export default function PortfolioChat() {
     } catch (error) {
       console.error("PortfolioPilot chat error:", error);
 
-      setMessages((m) => [
-        ...m,
+      setMessages((current) => [
+        ...current,
         {
           role: "assistant",
           content:
@@ -89,7 +131,83 @@ export default function PortfolioChat() {
     }
   }
 
-  function clearChat() {
+  async function handleResumeSelect(
+    event: ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+
+    const isAllowedType =
+      allowedTypes.includes(file.type) ||
+      file.name.toLowerCase().endsWith(".pdf") ||
+      file.name.toLowerCase().endsWith(".docx");
+
+    if (!isAllowedType) {
+      alert("Please upload a PDF or DOCX resume.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Resume must be smaller than 10 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setResumeUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/resume/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Resume upload failed: HTTP ${response.status} ${errorText}`
+        );
+      }
+
+      const data = await response.json();
+
+      console.log("Resume upload response:", data);
+
+      setResumeName(file.name);
+
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            `Resume "${file.name}" has been uploaded and indexed. ` +
+            "You can now ask questions about your experience, skills, projects, architecture, or technologies in the resume."
+        }
+      ]);
+    } catch (error) {
+      console.error("Resume upload error:", error);
+
+      alert(
+        "Resume upload failed. Please verify that the backend resume upload endpoint is available."
+      );
+    } finally {
+      setResumeUploading(false);
+      event.target.value = "";
+    }
+  }
+
+  function clearChat(): void {
     setMessages([
       {
         role: "assistant",
@@ -112,7 +230,10 @@ export default function PortfolioChat() {
             </span>
 
             <div>
-              <div className="text-xs font-bold text-white">ARCHITECT COPILOT</div>
+              <div className="text-xs font-bold text-white">
+                ARCHITECT COPILOT
+              </div>
+
               <div className="font-mono text-[8px] text-slate-600">
                 SESSION / GROUNDED
               </div>
@@ -128,6 +249,45 @@ export default function PortfolioChat() {
 
           <div className="mt-6">
             <div className="font-mono text-[8px] tracking-[.18em] text-slate-600">
+              RESUME KNOWLEDGE
+            </div>
+
+            <label
+              htmlFor="resume-upload"
+              className="mt-2 flex cursor-pointer flex-col rounded-md border border-dashed border-slate-700 bg-slate-950/20 p-3 transition hover:border-cyan-400/30 hover:bg-cyan-400/[.03]"
+            >
+              <span className="text-[10px] font-semibold text-slate-400">
+                {resumeUploading
+                  ? "INDEXING RESUME..."
+                  : resumeName
+                    ? "✓ RESUME READY"
+                    : "📄 UPLOAD RESUME"}
+              </span>
+
+              <span className="mt-1 break-all font-mono text-[7px] text-slate-600">
+                {resumeName ?? "PDF or DOCX · MAX 10 MB"}
+              </span>
+
+              <input
+                id="resume-upload"
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={handleResumeSelect}
+                disabled={resumeUploading}
+                className="hidden"
+              />
+            </label>
+
+            {resumeName && !resumeUploading && (
+              <div className="mt-2 font-mono text-[7px] leading-4 text-emerald-400/70">
+                Resume indexed successfully. Ask the assistant about your
+                experience or skills.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6">
+            <div className="font-mono text-[8px] tracking-[.18em] text-slate-600">
               PIPELINE STATUS
             </div>
 
@@ -137,13 +297,13 @@ export default function PortfolioChat() {
                 "Authorization",
                 "Reranking",
                 "Grounded Context"
-              ].map((x) => (
+              ].map((item) => (
                 <div
-                  key={x}
+                  key={item}
                   className="flex items-center gap-2 text-[9px] text-slate-500"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  {x}
+                  {item}
                 </div>
               ))}
             </div>
@@ -164,6 +324,7 @@ export default function PortfolioChat() {
             </div>
 
             <button
+              type="button"
               onClick={clearChat}
               className="rounded-md border border-slate-700 px-2.5 py-1.5 font-mono text-[8px] text-slate-500 hover:text-white"
             >
@@ -173,14 +334,16 @@ export default function PortfolioChat() {
 
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <div className="mx-auto max-w-3xl space-y-4">
-              {messages.map((m, i) => (
+              {messages.map((message, index) => (
                 <div
-                  key={i}
+                  key={index}
                   className={`flex gap-2 ${
-                    m.role === "user" ? "justify-end" : "justify-start"
+                    message.role === "user"
+                      ? "justify-end"
+                      : "justify-start"
                   }`}
                 >
-                  {m.role === "assistant" && (
+                  {message.role === "assistant" && (
                     <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-cyan-400/10 font-mono text-[10px] text-cyan-300">
                       AI
                     </span>
@@ -188,35 +351,41 @@ export default function PortfolioChat() {
 
                   <div
                     className={
-                      m.role === "user"
+                      message.role === "user"
                         ? "max-w-[82%] rounded-xl rounded-br-sm bg-cyan-400 px-3.5 py-3 text-xs leading-6 text-slate-950"
                         : "max-w-[88%] rounded-xl rounded-bl-sm border border-slate-800 bg-[#0d1a2b] px-4 py-3 text-xs leading-6 text-slate-300"
                     }
                   >
-                    {m.role === "assistant" && (
+                    {message.role === "assistant" && (
                       <div className="mb-2 font-mono text-[8px] tracking-widest text-cyan-300">
                         ARCHITECT / RESPONSE
                       </div>
                     )}
 
-                    <div className="whitespace-pre-line">{m.content}</div>
+                    <div className="whitespace-pre-line">
+                      {message.content}
+                    </div>
 
-                    {m.sources?.length ? (
+                    {message.sources && message.sources.length > 0 ? (
                       <div className="mt-4 border-t border-slate-800 pt-3">
                         <div className="mb-2 font-mono text-[8px] tracking-widest text-slate-600">
                           SOURCES
                         </div>
 
                         <div className="space-y-1">
-                          {m.sources.map((s, j) => (
+                          {message.sources.map((source, sourceIndex) => (
                             <div
-                              key={`${s.source}-${s.chunk_id}-${j}`}
+                              key={`${source.source}-${source.chunk_id}-${sourceIndex}`}
                               className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/30 px-2.5 py-2 font-mono text-[8px] text-slate-500"
                             >
                               <span className="text-cyan-400">◇</span>
-                              <span className="truncate">{s.source}</span>
+
+                              <span className="truncate">
+                                {source.source}
+                              </span>
+
                               <span className="ml-auto shrink-0">
-                                {s.category} · chunk {s.chunk_id}
+                                {source.category} · chunk {source.chunk_id}
                               </span>
                             </div>
                           ))}
@@ -245,14 +414,15 @@ export default function PortfolioChat() {
           <div className="border-t border-slate-800 px-4 py-3">
             <div className="mb-2 overflow-x-auto">
               <div className="flex min-w-max gap-1.5">
-                {suggestions.map((q) => (
+                {suggestions.map((question) => (
                   <button
-                    key={q}
+                    key={question}
+                    type="button"
                     disabled={loading}
-                    onClick={() => sendMessage(undefined, q)}
+                    onClick={() => sendMessage(undefined, question)}
                     className="rounded-full border border-slate-800 px-2.5 py-1.5 font-mono text-[8px] text-slate-500 hover:border-cyan-400/30 hover:text-cyan-300 disabled:opacity-40"
                   >
-                    {q}
+                    {question}
                   </button>
                 ))}
               </div>
@@ -265,13 +435,14 @@ export default function PortfolioChat() {
               <input
                 id="portfolio-question"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(event) => setInput(event.target.value)}
                 disabled={loading}
                 placeholder="Ask about RAG, .NET, AWS, architecture..."
                 className="min-w-0 flex-1 bg-transparent px-2.5 py-2 text-xs text-white outline-none placeholder:text-slate-600"
               />
 
               <button
+                type="submit"
                 disabled={loading || !input.trim()}
                 className="rounded-md bg-cyan-400 px-3 py-2 font-mono text-[9px] font-bold text-slate-950 disabled:opacity-30"
               >
@@ -286,12 +457,18 @@ export default function PortfolioChat() {
         </section>
       </div>
 
-      {ragData && <Trace data={ragData} />}
+      {ragData ? <Trace data={ragData} /> : null}
     </div>
   );
 }
 
-function Mini({ label, value }: { label: string; value: string }) {
+function Mini({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-md border border-slate-800 bg-slate-950/20 p-2.5">
       <div className="font-mono text-[7px] tracking-widest text-slate-600">
@@ -306,7 +483,7 @@ function Mini({ label, value }: { label: string; value: string }) {
 }
 
 function Trace({ data }: { data: RagResponse }) {
-  const steps = [
+  const steps: [string, string][] = [
     ["QUERY EMBEDDING", data.embedding_model],
     ["SEMANTIC RETRIEVAL", `${data.retrieval.retrieved} candidates`],
     [
@@ -337,13 +514,13 @@ function Trace({ data }: { data: RagResponse }) {
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-        {steps.map(([title, value], i) => (
+        {steps.map(([title, value], index) => (
           <div
             key={title}
             className="relative rounded-lg border border-slate-800 bg-[#0b1728] p-3"
           >
             <div className="font-mono text-[7px] text-cyan-400">
-              0{i + 1}
+              0{index + 1}
             </div>
 
             <div className="mt-1 text-[9px] font-bold text-slate-300">

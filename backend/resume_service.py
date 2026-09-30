@@ -15,10 +15,18 @@ from pypdf import PdfReader
 BASE_DIR = Path(__file__).resolve().parent
 
 RESUME_DIR = BASE_DIR / "resume_data"
-RESUME_UPLOAD_DIR = RESUME_DIR / "uploads"
-RESUME_VECTORSTORE_PATH = RESUME_DIR / "vectorstore"
 
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+RESUME_UPLOAD_DIR = (
+    RESUME_DIR / "uploads"
+)
+
+RESUME_VECTORSTORE_PATH = (
+    RESUME_DIR / "vectorstore"
+)
+
+EMBEDDING_MODEL = (
+    "sentence-transformers/all-MiniLM-L6-v2"
+)
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
@@ -43,13 +51,17 @@ RESUME_VECTORSTORE_PATH.mkdir(
 # Embeddings
 # =========================================================
 
-print("Loading resume embedding model...")
+print(
+    "Loading resume embedding model..."
+)
 
 embeddings = HuggingFaceEmbeddings(
     model_name=EMBEDDING_MODEL
 )
 
-print("Resume embedding model loaded.")
+print(
+    "Resume embedding model loaded."
+)
 
 
 # =========================================================
@@ -57,7 +69,7 @@ print("Resume embedding model loaded.")
 # =========================================================
 
 def extract_pdf_text(
-    file_path: Path
+    file_path: Path,
 ) -> str:
 
     reader = PdfReader(
@@ -71,9 +83,14 @@ def extract_pdf_text(
         text = page.extract_text()
 
         if text:
-            pages.append(text)
 
-    return "\n\n".join(pages)
+            pages.append(
+                text
+            )
+
+    return "\n\n".join(
+        pages
+    )
 
 
 # =========================================================
@@ -81,7 +98,7 @@ def extract_pdf_text(
 # =========================================================
 
 def extract_docx_text(
-    file_path: Path
+    file_path: Path,
 ) -> str:
 
     document = DocxDocument(
@@ -95,9 +112,14 @@ def extract_docx_text(
         text = paragraph.text.strip()
 
         if text:
-            paragraphs.append(text)
 
-    return "\n".join(paragraphs)
+            paragraphs.append(
+                text
+            )
+
+    return "\n".join(
+        paragraphs
+    )
 
 
 # =========================================================
@@ -105,10 +127,12 @@ def extract_docx_text(
 # =========================================================
 
 def extract_resume_text(
-    file_path: Path
+    file_path: Path,
 ) -> str:
 
-    suffix = file_path.suffix.lower()
+    suffix = (
+        file_path.suffix.lower()
+    )
 
     if suffix == ".pdf":
 
@@ -133,34 +157,44 @@ def extract_resume_text(
 # =========================================================
 
 def chunk_text(
-    text: str
+    text: str,
 ) -> list[str]:
 
-    normalized_text = " ".join(
-        text.split()
+    normalized_text = (
+        " ".join(
+            text.split()
+        )
     )
 
     chunks = []
 
     start = 0
 
-    while start < len(normalized_text):
+    while start < len(
+        normalized_text
+    ):
 
         end = min(
             start + CHUNK_SIZE,
             len(normalized_text),
         )
 
-        chunk = normalized_text[
-            start:end
-        ].strip()
+        chunk = (
+            normalized_text[
+                start:end
+            ].strip()
+        )
 
         if chunk:
+
             chunks.append(
                 chunk
             )
 
-        if end >= len(normalized_text):
+        if end >= len(
+            normalized_text
+        ):
+
             break
 
         start = max(
@@ -205,25 +239,33 @@ def create_resume_index(
                     "document_type": "resume",
                     "category": "professional_experience",
                     "access_level": "public",
-                    "chunk_id": f"resume-{index + 1}",
+                    "chunk_id": (
+                        f"resume-{index + 1}"
+                    ),
                 },
             )
         )
 
-    vectorstore = FAISS.from_documents(
-        documents,
-        embeddings,
+    vectorstore = (
+        FAISS.from_documents(
+            documents,
+            embeddings,
+        )
     )
 
     vectorstore.save_local(
-        str(RESUME_VECTORSTORE_PATH)
+        str(
+            RESUME_VECTORSTORE_PATH
+        )
     )
 
     return {
         "resume_name": resume_name,
         "chunks": len(documents),
         "vector_store": "FAISS",
-        "embedding_model": EMBEDDING_MODEL,
+        "embedding_model": (
+            EMBEDDING_MODEL
+        ),
     }
 
 
@@ -252,9 +294,9 @@ def process_resume(
         text=text,
     )
 
-    result["characters_extracted"] = len(
-        text
-    )
+    result[
+        "characters_extracted"
+    ] = len(text)
 
     return result
 
@@ -275,7 +317,9 @@ def get_resume_retriever():
         return None
 
     vectorstore = FAISS.load_local(
-        str(RESUME_VECTORSTORE_PATH),
+        str(
+            RESUME_VECTORSTORE_PATH
+        ),
         embeddings,
         allow_dangerous_deserialization=True,
     )
