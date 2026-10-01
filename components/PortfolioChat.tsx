@@ -241,7 +241,7 @@ export default function PortfolioChat() {
           </div>
 
           <div className="mt-6 space-y-2">
-            <Mini label="MODEL" value="Google Gemini 3.6 Flash" />
+            <Mini label="MODEL" value="GPT-OSS 120B · Groq" />
             <Mini label="VECTOR STORE" value="FAISS" />
             <Mini label="EMBEDDINGS" value="all-MiniLM-L6-v2" />
             <Mini label="API" value="FastAPI" />
