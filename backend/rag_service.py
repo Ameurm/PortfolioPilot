@@ -8,15 +8,18 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
+from resume_service import get_resume_retriever
+
+
 load_dotenv()
 
 
 BASE_DIR = Path(__file__).resolve().parent
 
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
-RESUME_VECTORSTORE_PATH = BASE_DIR / "resume_data" / "vectorstore"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+LLM_PROVIDER = "groq"
 LLM_MODEL = "openai/gpt-oss-120b"
 
 INITIAL_RETRIEVAL_K = 10
@@ -43,74 +46,11 @@ vectorstore = FAISS.load_local(
 print("Portfolio FAISS vector store loaded.")
 
 portfolio_retriever = vectorstore.as_retriever(
-    search_kwargs={"k": INITIAL_RETRIEVAL_K}
+    search_kwargs={
+        "k": INITIAL_RETRIEVAL_K
+    }
 )
 
-
-# ---------------------------------------------------------
-# Resume vector store
-# ---------------------------------------------------------
-
-resume_vectorstore = None
-resume_retriever = None
-
-
-def reload_resume_retriever() -> bool:
-    global resume_vectorstore
-    global resume_retriever
-
-    resume_index_file = RESUME_VECTORSTORE_PATH / "index.faiss"
-
-    if not resume_index_file.exists():
-        resume_vectorstore = None
-        resume_retriever = None
-
-        print(
-            "Resume FAISS vector store not found. "
-            "Resume retrieval is disabled."
-        )
-
-        return False
-
-    try:
-        print("Loading resume FAISS vector store...")
-
-        resume_vectorstore = FAISS.load_local(
-            str(RESUME_VECTORSTORE_PATH),
-            embeddings,
-            allow_dangerous_deserialization=True,
-        )
-
-        resume_retriever = resume_vectorstore.as_retriever(
-            search_kwargs={"k": INITIAL_RETRIEVAL_K}
-        )
-
-        print("Resume FAISS vector store loaded.")
-
-        return True
-
-    except Exception as exc:
-
-        resume_vectorstore = None
-        resume_retriever = None
-
-        print(
-            f"Failed to load resume FAISS vector store: {exc}"
-        )
-
-        return False
-
-
-reload_resume_retriever()
-
-
-# ---------------------------------------------------------
-# Gemini
-# ---------------------------------------------------------
-
-# ---------------------------------------------------------
-# Gemini
-# ---------------------------------------------------------
 
 # ---------------------------------------------------------
 # Groq
@@ -186,40 +126,141 @@ def tokenize(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------
-# Personal experience detection
+# Query intent classification
+# ---------------------------------------------------------
+
+def classify_query_intent(question: str) -> str:
+    """
+    Classifies the question so retrieval can prioritize
+    the appropriate knowledge source.
+
+    Returns:
+        PERSONAL_EXPERIENCE
+        PERSONAL_SKILLS
+        PROJECT_ARCHITECTURE
+        TECHNICAL_ARCHITECTURE
+        GENERAL
+    """
+
+    normalized = normalize_text(question)
+
+    personal_terms = {
+        "my experience",
+        "my background",
+        "my career",
+        "my resume",
+        "my skills",
+        "my projects",
+        "what have i built",
+        "what have i developed",
+        "what have i designed",
+        "what have i implemented",
+        "what did i build",
+        "what did i develop",
+        "what did i design",
+        "what did i implement",
+        "have i used",
+        "did i use",
+        "years of experience",
+        "professional experience",
+        "experience building",
+        "experience with",
+        "experience developing",
+        "experience designing",
+        "experience implementing",
+    }
+
+    project_architecture_terms = {
+        "architecture used in",
+        "architecture of",
+        "architecture for",
+        "architecture behind",
+        "how does my application",
+        "how does my portfolio",
+        "how does portfolio",
+        "how does the application",
+        "how is the application",
+        "how is portfolio",
+        "implementation used in",
+        "implementation of",
+        "rag architecture",
+        "rag pipeline used",
+        "pipeline used in",
+    }
+
+    personal_skill_terms = {
+        "what technologies do i know",
+        "what technologies and skills do i have",
+        "what skills and technologies do i have",
+        "what technologies do i have",
+        "what technologies do i have",
+        "what are my technologies",
+        "what skills do i have",
+        "what is my tech stack",
+        "what is my technology stack",
+        "which technologies have i used",
+        "which tools have i used",
+    }
+
+    technical_architecture_terms = {
+        "how does rag work",
+        "how does rag retrieval work",
+        "how does rag retrieval and reranking work",
+        "how does retrieval and reranking work",
+        "how do retrieval and reranking work",
+        "explain retrieval and reranking",
+        "how does rag architecture work",
+        "explain rag",
+        "explain the rag architecture",
+        "explain the rag pipeline",
+        "how does retrieval work",
+        "how does semantic search work",
+        "how does vector search work",
+        "how does reranking work",
+        "how does the retrieval pipeline work",
+    }
+
+    if any(
+        term in normalized
+        for term in personal_terms
+    ):
+        return "PERSONAL_EXPERIENCE"
+
+    if any(
+        term in normalized
+        for term in personal_skill_terms
+    ):
+        return "PERSONAL_SKILLS"
+
+    if any(
+        term in normalized
+        for term in project_architecture_terms
+    ):
+        return "PROJECT_ARCHITECTURE"
+
+    if any(
+        term in normalized
+        for term in technical_architecture_terms
+    ):
+        return "TECHNICAL_ARCHITECTURE"
+
+    return "GENERAL"
+
+
+# ---------------------------------------------------------
+# Backward-compatible personal question detection
 # ---------------------------------------------------------
 
 def is_personal_experience_question(
     question: str,
 ) -> bool:
 
-    normalized = normalize_text(question)
+    intent = classify_query_intent(question)
 
-    personal_terms = [
-        "experience",
-        "worked",
-        "work",
-        "built",
-        "developed",
-        "designed",
-        "implemented",
-        "architected",
-        "used",
-        "skills",
-        "background",
-        "resume",
-        "career",
-        "project",
-        "projects",
-        "javier",
-        "candidate",
-        "professional",
-    ]
-
-    return any(
-        term in normalized
-        for term in personal_terms
-    )
+    return intent in {
+        "PERSONAL_EXPERIENCE",
+        "PERSONAL_SKILLS",
+    }
 
 
 # ---------------------------------------------------------
@@ -242,11 +283,7 @@ def rerank_documents(
         tokenize(question)
     )
 
-    personal_question = (
-        is_personal_experience_question(
-            question
-        )
-    )
+    query_intent = classify_query_intent(question)
 
     scored_documents = []
 
@@ -332,12 +369,20 @@ def rerank_documents(
                 else:
                     score += 7.0
 
-        # Resume priority for personal questions
-        if (
-            personal_question
-            and source_type == "resume"
-        ):
-            score += 12.0
+        # Intent-based source priority
+        if query_intent in {
+            "PERSONAL_EXPERIENCE",
+            "PERSONAL_SKILLS",
+        }:
+            if source_type == "resume":
+                score += 12.0
+
+        elif query_intent in {
+            "PROJECT_ARCHITECTURE",
+            "TECHNICAL_ARCHITECTURE",
+        }:
+            if source_type == "portfolio":
+                score += 12.0
 
         # Requested technology matching
         if source_type == "resume":
@@ -418,40 +463,88 @@ def select_context_documents(
     if not documents:
         return []
 
-    personal_question = (
-        is_personal_experience_question(
-            question
-        )
-    )
+    intent = classify_query_intent(question)
 
-    if personal_question:
+    resume_documents = [
+        document
+        for document in documents
+        if classify_source(document) == "resume"
+    ]
 
-        resume_documents = [
-            document
-            for document in documents
-            if classify_source(document)
-            == "resume"
-        ]
+    portfolio_documents = [
+        document
+        for document in documents
+        if classify_source(document) == "portfolio"
+    ]
 
-        selected = []
+    # -----------------------------------------------------
+    # Personal experience
+    # -----------------------------------------------------
 
-        # Prioritize resume evidence
-        for document in resume_documents[:3]:
+    if intent == "PERSONAL_EXPERIENCE":
 
+        primary = resume_documents
+        secondary = portfolio_documents
+
+    # -----------------------------------------------------
+    # Personal skills
+    # -----------------------------------------------------
+
+    elif intent == "PERSONAL_SKILLS":
+
+        primary = resume_documents
+        secondary = portfolio_documents
+
+    # -----------------------------------------------------
+    # Project architecture
+    # -----------------------------------------------------
+
+    elif intent == "PROJECT_ARCHITECTURE":
+
+        primary = portfolio_documents
+        secondary = resume_documents
+
+    # -----------------------------------------------------
+    # Technical architecture
+    # -----------------------------------------------------
+
+    elif intent == "TECHNICAL_ARCHITECTURE":
+
+        primary = portfolio_documents
+        secondary = resume_documents
+
+    # -----------------------------------------------------
+    # General question
+    # -----------------------------------------------------
+
+    else:
+
+        # Preserve the hybrid reranking order for
+        # questions that do not clearly belong to
+        # one knowledge domain.
+
+        return documents[:max_documents]
+
+    selected = []
+
+    # Primary knowledge source gets first priority.
+    for document in primary:
+
+        if len(selected) >= max_documents:
+            break
+
+        selected.append(document)
+
+    # Secondary source fills remaining context.
+    for document in secondary:
+
+        if len(selected) >= max_documents:
+            break
+
+        if document not in selected:
             selected.append(document)
 
-        # Fill remaining context
-        for document in documents:
-
-            if len(selected) >= max_documents:
-                break
-
-            if document not in selected:
-                selected.append(document)
-
-        return selected[:max_documents]
-
-    return documents[:max_documents]
+    return selected[:max_documents]
 
 
 # ---------------------------------------------------------
@@ -460,6 +553,7 @@ def select_context_documents(
 
 def answer_question(
     question: str,
+    session_id: str,
 ) -> dict[str, Any]:
 
     question = question.strip()
@@ -469,9 +563,11 @@ def answer_question(
         return {
             "answer": (
                 "Please provide a question about "
-                "Javier's experience, skills, or projects."
+                "the candidate's experience, skills, "
+                "or projects."
             ),
             "question": question,
+            "query_intent": "GENERAL",
             "retrieval": {
                 "initial_k": INITIAL_RETRIEVAL_K,
                 "portfolio_retrieved": 0,
@@ -485,36 +581,50 @@ def answer_question(
             "reranking": {
                 "enabled": True,
                 "type": "hybrid_exact_semantic",
+                "query_intent": "GENERAL",
                 "documents_reranked": 0,
             },
             "context": {
                 "selected": 0,
                 "max_context": FINAL_CONTEXT_K,
             },
+            "provider": LLM_PROVIDER,
             "model": LLM_MODEL,
             "embedding_model": EMBEDDING_MODEL,
             "vector_store": "FAISS",
             "sources": [],
         }
 
+    query_intent = classify_query_intent(question)
+
     # -----------------------------------------------------
     # Portfolio retrieval
     # -----------------------------------------------------
 
     portfolio_documents = (
-        portfolio_retriever.invoke(question)
+        portfolio_retriever.invoke(
+            question
+        )
     )
 
     # -----------------------------------------------------
-    # Resume retrieval
+    # Session-specific resume retrieval
     # -----------------------------------------------------
 
     resume_documents = []
 
+    resume_retriever = (
+        get_resume_retriever(
+            session_id
+        )
+    )
+
     if resume_retriever is not None:
 
         resume_documents = (
-            resume_retriever.invoke(question)
+            resume_retriever.invoke(
+                question
+            )
         )
 
     # -----------------------------------------------------
@@ -615,12 +725,17 @@ Content:
     # -----------------------------------------------------
 
     prompt = f"""
-You are the AI assistant for Javier's professional portfolio.
+You are the AI assistant for a professional software
+architect portfolio.
 
-Answer the user's question using ONLY the provided source material.
+Answer the user's question using ONLY the provided
+source material.
 
 USER QUESTION:
 {question}
+
+QUERY INTENT:
+{query_intent}
 
 SOURCE MATERIAL:
 {context}
@@ -629,7 +744,8 @@ RULES:
 
 1. Answer the question directly.
 
-2. Use only facts explicitly supported by the source material.
+2. Use only facts explicitly supported by the source
+material.
 
 3. Do not use outside knowledge.
 
@@ -654,39 +770,60 @@ The knowledge base does not contain enough information to answer that accurately
 10. Do not speculate.
 
 11. Clearly distinguish between technologies actually
-documented in Javier's experience and technologies
+documented in the candidate's experience and technologies
 mentioned only as possible alternatives or architectural
 concepts.
 
 12. When the source type is "resume", treat it as
-documented professional experience, skills, projects,
+authoritative evidence for the candidate's documented
+professional experience, skills, projects, education,
 and career history.
 
 13. When the source type is "portfolio", treat it as
 project architecture and technical knowledge documented
 in the portfolio.
 
-14. Do not combine unrelated claims merely because they
+14. When a session-specific resume is present, NEVER use
+a person's name, identity, employer history, education,
+or personal background from another portfolio document
+to identify the candidate.
+
+15. Do not combine unrelated claims merely because they
 appear in different documents.
 
-15. Keep the answer concise but useful.
+16. Keep the answer concise but useful.
 
-16. When the question asks about Javier's personal
-experience, prioritize evidence from the resume.
+17. When the question asks about the candidate's personal
+experience, prioritize the session-specific resume.
 
-17. If multiple resume sections support the same
+18. If multiple resume sections support the same
 technology, synthesize them into one accurate answer.
 
-18. Do not infer that knowing a technology means Javier
-used it professionally unless the source explicitly
-supports that.
+19. Do not infer that knowing a technology means the
+candidate used it professionally unless the source
+explicitly supports that.
+
+20. Never introduce a candidate name unless that name
+appears in the authoritative session-specific resume
+source material.
+
+21. When the query intent is PROJECT_ARCHITECTURE,
+prioritize the portfolio source as the authoritative
+source for the application's documented architecture.
+
+22. When the query intent is TECHNICAL_ARCHITECTURE,
+prioritize portfolio architecture documentation while
+using resume material only when it directly supports
+the technical answer.
 """
 
     # -----------------------------------------------------
-    # Gemini
+    # Groq
     # -----------------------------------------------------
 
-    response = llm.invoke(prompt)
+    response = llm.invoke(
+        prompt
+    )
 
     answer = response.content
 
@@ -750,6 +887,7 @@ supports that.
     return {
         "answer": answer,
         "question": question,
+        "query_intent": query_intent,
 
         "retrieval": {
             "initial_k": INITIAL_RETRIEVAL_K,
@@ -774,6 +912,7 @@ supports that.
         "reranking": {
             "enabled": True,
             "type": "hybrid_exact_semantic",
+            "query_intent": query_intent,
             "documents_reranked": len(
                 authorized_documents
             ),
@@ -787,9 +926,16 @@ supports that.
             "max_context": FINAL_CONTEXT_K,
         },
 
+        "provider": LLM_PROVIDER,
         "model": LLM_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "vector_store": "FAISS",
 
+        "session_id": session_id,
+
         "sources": sources,
     }
+
+
+
+

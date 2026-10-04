@@ -153,8 +153,8 @@ The current implementation uses:
 - LangChain
 - HuggingFace `all-MiniLM-L6-v2` embeddings
 - FAISS vector store
-- Google Gemini API
-- Google Gemini 3.6 Flash
+- Groq API
+- Groq openai/gpt-oss-120b
 - FastAPI
 
 The current RAG flow is:
@@ -180,7 +180,7 @@ Top Retrieved Chunks
 Context Construction
     |
     v
-Google Gemini 3.6 Flash
+Groq openai/gpt-oss-120b
     |
     v
 Grounded Answer
@@ -292,7 +292,7 @@ The LLM is instructed to answer using the supplied source material.
 
 # Generation
 
-The current portfolio implementation uses Google Gemini 3.6 Flash.
+The current portfolio implementation uses Groq openai/gpt-oss-120b.
 
 The LLM receives:
 
@@ -406,7 +406,7 @@ RAG Service
         |
         +---- FAISS Vector Store
         |
-        +---- Google Gemini 3.6 Flash
+        +---- Groq openai/gpt-oss-120b
         |
         +---- Reranking
 
@@ -487,7 +487,7 @@ The RAG service:
 4. Applies metadata authorization.
 5. Reranks the candidates.
 6. Selects the final context.
-7. Sends the grounded context to Google Gemini 3.6 Flash.
+7. Sends the grounded context to Groq openai/gpt-oss-120b.
 8. Returns the generated answer to the frontend.
 
 The portfolio assistant is designed to demonstrate the architecture and
@@ -508,8 +508,8 @@ The current portfolio RAG implementation uses:
 - HuggingFace Embeddings
 - sentence-transformers/all-MiniLM-L6-v2
 - FAISS
-- Google Gemini API
-- Google Gemini 3.6 Flash
+- Groq API
+- Groq openai/gpt-oss-120b
 
 The architecture is intentionally modular so components can later be replaced
 with production services such as managed vector databases, cloud-hosted LLMs,

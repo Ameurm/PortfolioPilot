@@ -16,12 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent
 
 RESUME_DIR = BASE_DIR / "resume_data"
 
-RESUME_UPLOAD_DIR = (
-    RESUME_DIR / "uploads"
-)
-
-RESUME_VECTORSTORE_PATH = (
-    RESUME_DIR / "vectorstore"
+RESUME_SESSIONS_DIR = (
+    RESUME_DIR / "sessions"
 )
 
 EMBEDDING_MODEL = (
@@ -33,18 +29,51 @@ CHUNK_OVERLAP = 150
 
 
 # =========================================================
-# Directory Initialization
+# Session Paths
 # =========================================================
 
-RESUME_UPLOAD_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+def get_session_directory(
+    session_id: str,
+) -> Path:
 
-RESUME_VECTORSTORE_PATH.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+    safe_session_id = session_id.strip()
+
+    if not safe_session_id:
+
+        raise ValueError(
+            "Session ID is required."
+        )
+
+    session_dir = (
+        RESUME_SESSIONS_DIR
+        / safe_session_id
+    )
+
+    return session_dir
+
+
+def get_session_upload_directory(
+    session_id: str,
+) -> Path:
+
+    return (
+        get_session_directory(
+            session_id
+        )
+        / "uploads"
+    )
+
+
+def get_session_vectorstore_directory(
+    session_id: str,
+) -> Path:
+
+    return (
+        get_session_directory(
+            session_id
+        )
+        / "vectorstore"
+    )
 
 
 # =========================================================
@@ -212,6 +241,7 @@ def chunk_text(
 def create_resume_index(
     resume_name: str,
     text: str,
+    session_id: str,
 ) -> dict[str, Any]:
 
     chunks = chunk_text(
@@ -224,6 +254,17 @@ def create_resume_index(
             "No readable text was found "
             "in the resume."
         )
+
+    vectorstore_path = (
+        get_session_vectorstore_directory(
+            session_id
+        )
+    )
+
+    vectorstore_path.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     documents = []
 
@@ -239,6 +280,7 @@ def create_resume_index(
                     "document_type": "resume",
                     "category": "professional_experience",
                     "access_level": "public",
+                    "session_id": session_id,
                     "chunk_id": (
                         f"resume-{index + 1}"
                     ),
@@ -255,7 +297,7 @@ def create_resume_index(
 
     vectorstore.save_local(
         str(
-            RESUME_VECTORSTORE_PATH
+            vectorstore_path
         )
     )
 
@@ -266,6 +308,7 @@ def create_resume_index(
         "embedding_model": (
             EMBEDDING_MODEL
         ),
+        "session_id": session_id,
     }
 
 
@@ -276,6 +319,7 @@ def create_resume_index(
 def process_resume(
     file_path: Path,
     resume_name: str,
+    session_id: str,
 ) -> dict[str, Any]:
 
     text = extract_resume_text(
@@ -292,6 +336,7 @@ def process_resume(
     result = create_resume_index(
         resume_name=resume_name,
         text=text,
+        session_id=session_id,
     )
 
     result[
@@ -305,10 +350,18 @@ def process_resume(
 # Resume Retriever
 # =========================================================
 
-def get_resume_retriever():
+def get_resume_retriever(
+    session_id: str,
+):
+
+    vectorstore_path = (
+        get_session_vectorstore_directory(
+            session_id
+        )
+    )
 
     index_file = (
-        RESUME_VECTORSTORE_PATH
+        vectorstore_path
         / "index.faiss"
     )
 
@@ -318,7 +371,7 @@ def get_resume_retriever():
 
     vectorstore = FAISS.load_local(
         str(
-            RESUME_VECTORSTORE_PATH
+            vectorstore_path
         ),
         embeddings,
         allow_dangerous_deserialization=True,
